@@ -46,10 +46,11 @@ async def on_interaction(interaction: discord.Interaction):
 
     member = interaction.user
     if role in member.roles:
-        await interaction.response.send_message(f"すでに『{role.name}』を持っています。", ephemeral=True)
+        await member.remove_roles(role)
+        await interaction.response.send_message(f"『{role.name}』を外しました。", ephemeral=True)
     else:
         await member.add_roles(role)
-        await interaction.response.send_message(f"『{role.name}』を付与しました!ようこそ🎉", ephemeral=True)
+        await interaction.response.send_message(f"『{role.name}』を付与しました!", ephemeral=True)
 
 
 async def ensure_bot_ready():
