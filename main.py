@@ -2,7 +2,7 @@ import os
 import asyncio
 import discord
 from mcp.server.fastmcp import FastMCP
-from starlette.requests import Request
+from starlette.middleware.base import BaseHTTPMiddleware
 from starlette.responses import JSONResponse
 
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
@@ -72,25 +72,26 @@ async def list_channels(guild_id: int) -> str:
     
     return "\n".join(channels_info)
 
-# --- 起動処理と認証ミドルウェア ---
+# --- 認証ミドルウェア定義 ---
+
+class AuthMiddleware(BaseHTTPMiddleware):
+    async def dispatch(self, request, call_next):
+        if API_SECRET_KEY:
+            auth_header = request.headers.get("Authorization")
+            expected_header = f"Bearer {API_SECRET_KEY}"
+            if auth_header != expected_header:
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return await call_next(request)
+
+# --- 起動処理 ---
 
 if __name__ == "__main__":
     import uvicorn
     
     port = int(os.getenv("PORT", 8000))
     app = mcp.sse_app()
-
-    # 認証用ミドルウェア
-    @app.middleware("http")
-    async def check_api_key(request: Request, call_next):
-        # API_SECRET_KEYが設定されている場合のみ認証を行う
-        if API_SECRET_KEY:
-            auth_header = request.headers.get("Authorization")
-            expected_header = f"Bearer {API_SECRET_KEY}"
-            if auth_header != expected_header:
-                return JSONResponse({"error": "Unauthorized"}, status_code=401)
-        
-        response = await call_next(request)
-        return response
+    
+    # FastMCPのStarletteアプリに認証ミドルウェアを追加
+    app.add_middleware(AuthMiddleware)
 
     uvicorn.run(app, host="0.0.0.0", port=port)
