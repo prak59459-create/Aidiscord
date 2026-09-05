@@ -1,5 +1,6 @@
 import os
 import asyncio
+import base64
 import discord
 from mcp.server.fastmcp import FastMCP
 from starlette.middleware.base import BaseHTTPMiddleware
@@ -73,38 +74,38 @@ async def list_channels(guild_id: int) -> str:
     return "\n".join(channels_info)
 
 # --- 認証ミドルウェア定義 ---
-import base64
-
-# --- 認証ミドルウェア定義 ---
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        if API_SECRET_KEY:
-            auth_header = request.headers.get("Authorization")
-            if not auth_header:
-                return JSONResponse({"error": "Unauthorized"}, status_code=401)
-            
-            # Authorizationヘッダーのチェック
-            try:
-                # 1. Bearer認証のチェック
-                if auth_header == f"Bearer {API_SECRET_KEY}":
-                    return await call_next(request)
+        # 1. API_SECRET_KEYが未設定の場合は認証をスキップ
+        if not API_SECRET_KEY:
+            return await call_next(request)
 
-                # 2. Basic認証 (Claudeアプリのクライアントシークレット) のチェック
-                if auth_header.startswith("Basic "):
+        # 2. Claudeが認証チェックやログインでアクセスするパスは認証除外（バイパス）
+        path = request.url.path
+        if path.startswith("/.well-known") or path in ["/authorize", "/token", "/login"]:
+            return await call_next(request)
+
+        # 3. リクエストヘッダーから認証情報の取得と検証
+        auth_header = request.headers.get("Authorization")
+        if auth_header:
+            # Bearer認証の確認
+            if auth_header == f"Bearer {API_SECRET_KEY}":
+                return await call_next(request)
+
+            # Basic認証 (Claudeアプリからの認証情報) の確認
+            if auth_header.startswith("Basic "):
+                try:
                     encoded_credentials = auth_header.split(" ")[1]
                     decoded = base64.b64decode(encoded_credentials).decode("utf-8")
-                    # username:password 形式で届くため、password部分をチェック
                     if ":" in decoded:
                         _, password = decoded.split(":", 1)
                         if password == API_SECRET_KEY:
                             return await call_next(request)
+                except Exception:
+                    pass
 
-                return JSONResponse({"error": "Unauthorized"}, status_code=401)
-            except Exception:
-                return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
-        return await call_next(request)
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
 # --- 起動処理 ---
 
@@ -114,7 +115,6 @@ if __name__ == "__main__":
     port = int(os.getenv("PORT", 8000))
     app = mcp.sse_app()
     
-    # FastMCPのStarletteアプリに認証ミドルウェアを追加
     app.add_middleware(AuthMiddleware)
 
     uvicorn.run(app, host="0.0.0.0", port=port)
