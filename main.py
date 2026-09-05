@@ -75,25 +75,24 @@ async def list_channels(guild_id: int) -> str:
 
 # --- 認証ミドルウェア定義 ---
 
+# --- 認証ミドルウェア定義 ---
+
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
-        # 1. API_SECRET_KEYが未設定の場合は認証をスキップ
         if not API_SECRET_KEY:
             return await call_next(request)
 
-        # 2. Claudeが認証チェックやログインでアクセスするパスは認証除外（バイパス）
-        path = request.url.path
-        if path.startswith("/.well-known") or path in ["/authorize", "/token", "/login"]:
+        # 1. クエリパラメータ認証 (?token=YOUR_KEY または ?api_key=YOUR_KEY)
+        token_param = request.query_params.get("token") or request.query_params.get("api_key")
+        if token_param == API_SECRET_KEY:
             return await call_next(request)
 
-        # 3. リクエストヘッダーから認証情報の取得と検証
+        # 2. Authorization ヘッダー認証 (Bearer または Basic)
         auth_header = request.headers.get("Authorization")
         if auth_header:
-            # Bearer認証の確認
             if auth_header == f"Bearer {API_SECRET_KEY}":
                 return await call_next(request)
 
-            # Basic認証 (Claudeアプリからの認証情報) の確認
             if auth_header.startswith("Basic "):
                 try:
                     encoded_credentials = auth_header.split(" ")[1]
@@ -105,7 +104,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 except Exception:
                     pass
 
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        return JSONResponse({"error": "Unauthorized"}, status_code=401))
 
 # --- 起動処理 ---
 
