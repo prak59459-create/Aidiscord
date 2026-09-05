@@ -104,7 +104,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
                 except Exception:
                     pass
 
-        return JSONResponse({"error": "Unauthorized"}, status_code=401))
+        return JSONResponse({"error": "Unauthorized"}, status_code=401)
 
 # --- 起動処理 ---
 
