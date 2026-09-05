@@ -77,8 +77,11 @@ async def list_channels(guild_id: int) -> str:
     return "\n".join(channels_info)
 
 if __name__ == "__main__":
-    # Renderで割り当てられるポートを取得（無ければ8000）
+    import uvicorn
+    
+    # Renderから割り当てられるポートを取得（無ければ8000）
     port = int(os.getenv("PORT", 8000))
     
-    # 0.0.0.0 でホスト指定し、Renderからのアクセスを受け付ける
-    mcp.run(transport="sse", host="0.0.0.0", port=port)
+    # FastMCPのSSEアプリを取得してUvicornで直接起動
+    app = mcp.sse_app()
+    uvicorn.run(app, host="0.0.0.0", port=port)
