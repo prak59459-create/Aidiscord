@@ -75,8 +75,6 @@ async def list_channels(guild_id: int) -> str:
 
 # --- 認証ミドルウェア定義 ---
 
-# --- 認証ミドルウェア定義 ---
-
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if not API_SECRET_KEY:
@@ -87,7 +85,7 @@ class AuthMiddleware(BaseHTTPMiddleware):
         if token_param == API_SECRET_KEY:
             return await call_next(request)
 
-        # 2. Authorization ヘッダー認証 (Bearer または Basic)
+        # 2. Authorization ヘッダー認証 (Bearer / Basic)
         auth_header = request.headers.get("Authorization")
         if auth_header:
             if auth_header == f"Bearer {API_SECRET_KEY}":
