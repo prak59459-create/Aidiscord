@@ -2,19 +2,18 @@ import os
 import asyncio
 import discord
 from mcp.server.fastmcp import FastMCP
+from starlette.requests import Request
+from starlette.responses import JSONResponse
 
-# 環境変数からBotトークンを取得
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 
-# MCPサーバーの初期化
 mcp = FastMCP("Discord-Server-Builder")
 
-# Discord Clientの設定
 intents = discord.Intents.default()
 intents.guilds = True
 client = discord.Client(intents=intents)
 
-# Discordのログイン状態管理
 bot_ready = asyncio.Event()
 
 @client.event
@@ -27,7 +26,7 @@ async def ensure_bot_ready():
         asyncio.create_task(client.start(DISCORD_TOKEN))
         await bot_ready.wait()
 
-# --- Claudeから呼び出すツール群 ---
+# --- ツール群 ---
 
 @mcp.tool()
 async def create_category(guild_id: int, category_name: str) -> str:
@@ -42,10 +41,7 @@ async def create_category(guild_id: int, category_name: str) -> str:
 
 @mcp.tool()
 async def create_channel(guild_id: int, channel_name: str, channel_type: str = "text", category_id: int = None) -> str:
-    """
-    指定されたサーバーにテキストまたはボイスチャンネルを作成します。
-    channel_type: 'text' または 'voice'
-    """
+    """指定されたサーバーにテキストまたはボイスチャンネルを作成します。"""
     await ensure_bot_ready()
     guild = client.get_guild(guild_id)
     if not guild:
@@ -76,12 +72,25 @@ async def list_channels(guild_id: int) -> str:
     
     return "\n".join(channels_info)
 
+# --- 起動処理と認証ミドルウェア ---
+
 if __name__ == "__main__":
     import uvicorn
     
-    # Renderから割り当てられるポートを取得（無ければ8000）
     port = int(os.getenv("PORT", 8000))
-    
-    # FastMCPのSSEアプリを取得してUvicornで直接起動
     app = mcp.sse_app()
+
+    # 認証用ミドルウェア
+    @app.middleware("http")
+    async def check_api_key(request: Request, call_next):
+        # API_SECRET_KEYが設定されている場合のみ認証を行う
+        if API_SECRET_KEY:
+            auth_header = request.headers.get("Authorization")
+            expected_header = f"Bearer {API_SECRET_KEY}"
+            if auth_header != expected_header:
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+        
+        response = await call_next(request)
+        return response
+
     uvicorn.run(app, host="0.0.0.0", port=port)
