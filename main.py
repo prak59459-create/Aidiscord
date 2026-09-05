@@ -73,14 +73,37 @@ async def list_channels(guild_id: int) -> str:
     return "\n".join(channels_info)
 
 # --- 認証ミドルウェア定義 ---
+import base64
+
+# --- 認証ミドルウェア定義 ---
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
         if API_SECRET_KEY:
             auth_header = request.headers.get("Authorization")
-            expected_header = f"Bearer {API_SECRET_KEY}"
-            if auth_header != expected_header:
+            if not auth_header:
                 return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            
+            # Authorizationヘッダーのチェック
+            try:
+                # 1. Bearer認証のチェック
+                if auth_header == f"Bearer {API_SECRET_KEY}":
+                    return await call_next(request)
+
+                # 2. Basic認証 (Claudeアプリのクライアントシークレット) のチェック
+                if auth_header.startswith("Basic "):
+                    encoded_credentials = auth_header.split(" ")[1]
+                    decoded = base64.b64decode(encoded_credentials).decode("utf-8")
+                    # username:password 形式で届くため、password部分をチェック
+                    if ":" in decoded:
+                        _, password = decoded.split(":", 1)
+                        if password == API_SECRET_KEY:
+                            return await call_next(request)
+
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+            except Exception:
+                return JSONResponse({"error": "Unauthorized"}, status_code=401)
+
         return await call_next(request)
 
 # --- 起動処理 ---
