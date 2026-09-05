@@ -9,7 +9,8 @@ from starlette.responses import JSONResponse
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
 API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 
-mcp = FastMCP("Discord-Server-Builder")
+# Hostヘッダーのバリデーションエラーを回避するため host を指定して初期化
+mcp = FastMCP("Discord-Server-Builder", host="0.0.0.0")
 
 intents = discord.Intents.default()
 intents.guilds = True
@@ -77,15 +78,21 @@ async def list_channels(guild_id: int) -> str:
 
 class AuthMiddleware(BaseHTTPMiddleware):
     async def dispatch(self, request, call_next):
+        path = request.url.path
+
+        # 1. RenderのヘルスチェックやOAuth probeのパスは無条件で許可する
+        if path == "/" or path.startswith("/.well-known") or path in ["/register", "/authorize", "/token"]:
+            return await call_next(request)
+
         if not API_SECRET_KEY:
             return await call_next(request)
 
-        # 1. クエリパラメータ認証 (?token=YOUR_KEY または ?api_key=YOUR_KEY)
+        # 2. クエリパラメータ認証 (?token=YOUR_KEY または ?api_key=YOUR_KEY)
         token_param = request.query_params.get("token") or request.query_params.get("api_key")
         if token_param == API_SECRET_KEY:
             return await call_next(request)
 
-        # 2. Authorization ヘッダー認証 (Bearer / Basic)
+        # 3. Authorization ヘッダー認証 (Bearer / Basic)
         auth_header = request.headers.get("Authorization")
         if auth_header:
             if auth_header == f"Bearer {API_SECRET_KEY}":
