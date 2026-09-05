@@ -1,15 +1,11 @@
 import os
 import asyncio
-import base64
 import discord
 from mcp.server.fastmcp import FastMCP
-from starlette.middleware.base import BaseHTTPMiddleware
-from starlette.responses import JSONResponse
 
 DISCORD_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
-API_SECRET_KEY = os.getenv("API_SECRET_KEY")
 
-# Hostヘッダーのバリデーションエラーを回避するため host を指定して初期化
+# Hostバリデーション回避のため host="0.0.0.0" を指定
 mcp = FastMCP("Discord-Server-Builder", host="0.0.0.0")
 
 intents = discord.Intents.default()
@@ -74,43 +70,6 @@ async def list_channels(guild_id: int) -> str:
     
     return "\n".join(channels_info)
 
-# --- 認証ミドルウェア定義 ---
-
-class AuthMiddleware(BaseHTTPMiddleware):
-    async def dispatch(self, request, call_next):
-        path = request.url.path
-
-        # 1. RenderのヘルスチェックやOAuth probeのパスは無条件で許可する
-        if path == "/" or path.startswith("/.well-known") or path in ["/register", "/authorize", "/token"]:
-            return await call_next(request)
-
-        if not API_SECRET_KEY:
-            return await call_next(request)
-
-        # 2. クエリパラメータ認証 (?token=YOUR_KEY または ?api_key=YOUR_KEY)
-        token_param = request.query_params.get("token") or request.query_params.get("api_key")
-        if token_param == API_SECRET_KEY:
-            return await call_next(request)
-
-        # 3. Authorization ヘッダー認証 (Bearer / Basic)
-        auth_header = request.headers.get("Authorization")
-        if auth_header:
-            if auth_header == f"Bearer {API_SECRET_KEY}":
-                return await call_next(request)
-
-            if auth_header.startswith("Basic "):
-                try:
-                    encoded_credentials = auth_header.split(" ")[1]
-                    decoded = base64.b64decode(encoded_credentials).decode("utf-8")
-                    if ":" in decoded:
-                        _, password = decoded.split(":", 1)
-                        if password == API_SECRET_KEY:
-                            return await call_next(request)
-                except Exception:
-                    pass
-
-        return JSONResponse({"error": "Unauthorized"}, status_code=401)
-
 # --- 起動処理 ---
 
 if __name__ == "__main__":
@@ -118,7 +77,5 @@ if __name__ == "__main__":
     
     port = int(os.getenv("PORT", 8000))
     app = mcp.sse_app()
-    
-    app.add_middleware(AuthMiddleware)
 
     uvicorn.run(app, host="0.0.0.0", port=port)
