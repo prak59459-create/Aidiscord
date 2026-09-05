@@ -10,8 +10,10 @@ mcp = FastMCP("Discord-Server-Builder", host="0.0.0.0")
 
 intents = discord.Intents.default()
 intents.guilds = True
-client = discord.Client(intents=intents)
+intents.members = True  # ロール付与やメンバー操作に必要
+intents.message_content = True
 
+client = discord.Client(intents=intents)
 bot_ready = asyncio.Event()
 
 @client.event
@@ -24,7 +26,9 @@ async def ensure_bot_ready():
         asyncio.create_task(client.start(DISCORD_TOKEN))
         await bot_ready.wait()
 
-# --- ツール群 ---
+# ==========================================
+# 1. チャンネル & カテゴリー管理ツール
+# ==========================================
 
 @mcp.tool()
 async def create_category(guild_id: int, category_name: str) -> str:
@@ -38,7 +42,7 @@ async def create_category(guild_id: int, category_name: str) -> str:
     return f"カテゴリー『{category.name}』(ID: {category.id}) を作成しました。"
 
 @mcp.tool()
-async def create_channel(guild_id: int, channel_name: str, channel_type: str = "text", category_id: int = None) -> str:
+async def create_channel(guild_id: int, channel_name: str, channel_type: str = "text", category_id: int = None, topic: str = None) -> str:
     """指定されたサーバーにテキストまたはボイスチャンネルを作成します。"""
     await ensure_bot_ready()
     guild = client.get_guild(guild_id)
@@ -48,17 +52,33 @@ async def create_channel(guild_id: int, channel_name: str, channel_type: str = "
     category = guild.get_channel(category_id) if category_id else None
 
     if channel_type == "text":
-        ch = await guild.create_text_channel(channel_name, category=category)
+        ch = await guild.create_text_channel(channel_name, category=category, topic=topic)
     elif channel_type == "voice":
         ch = await guild.create_voice_channel(channel_name, category=category)
     else:
         return "channel_type は 'text' または 'voice' を指定してください。"
 
-    return f"チャンネル『{ch.name}』を作成しました。"
+    return f"チャンネル『{ch.name}』(ID: {ch.id}) を作成しました。"
+
+@mcp.tool()
+async def delete_channel(guild_id: int, channel_id: int) -> str:
+    """指定されたチャンネルを削除します。"""
+    await ensure_bot_ready()
+    guild = client.get_guild(guild_id)
+    if not guild:
+        return "指定されたサーバーが見つかりません。"
+    
+    channel = guild.get_channel(channel_id)
+    if not channel:
+        return "指定されたチャンネルが見つかりません。"
+
+    name = channel.name
+    await channel.delete()
+    return f"チャンネル『{name}』を削除しました。"
 
 @mcp.tool()
 async def list_channels(guild_id: int) -> str:
-    """サーバー内の現在のチャンネル一覧を取得します。"""
+    """サーバー内の現在のチャンネル・カテゴリー一覧を取得します。"""
     await ensure_bot_ready()
     guild = client.get_guild(guild_id)
     if not guild:
@@ -70,7 +90,81 @@ async def list_channels(guild_id: int) -> str:
     
     return "\n".join(channels_info)
 
-# --- 起動処理 ---
+# ==========================================
+# 2. ロール（役職）管理ツール
+# ==========================================
+
+@mcp.tool()
+async def create_role(guild_id: int, role_name: str, color_hex: str = None, mentionable: bool = True) -> str:
+    """新しいロール（役職）を作成します。color_hexはカラーコード（例: #FF0000）"""
+    await ensure_bot_ready()
+    guild = client.get_guild(guild_id)
+    if not guild:
+        return "指定されたサーバーが見つかりません。"
+
+    color = discord.Color.default()
+    if color_hex:
+        try:
+            color_hex = color_hex.lstrip('#')
+            color = discord.Color(int(color_hex, 16))
+        except ValueError:
+            pass
+
+    role = await guild.create_role(name=role_name, color=color, mentionable=mentionable)
+    return f"ロール『{role.name}』(ID: {role.id}) を作成しました。"
+
+@mcp.tool()
+async def assign_role(guild_id: int, user_id: int, role_id: int) -> str:
+    """指定したメンバーにロールを付与します。"""
+    await ensure_bot_ready()
+    guild = client.get_guild(guild_id)
+    if not guild:
+        return "指定されたサーバーが見つかりません。"
+
+    member = guild.get_member(user_id)
+    if not member:
+        return "指定されたメンバーが見つかりません。"
+
+    role = guild.get_role(role_id)
+    if not role:
+        return "指定されたロールが見つかりません。"
+
+    await member.add_roles(role)
+    return f"メンバー『{member.name}』にロール『{role.name}』を付与しました。"
+
+@mcp.tool()
+async def list_roles(guild_id: int) -> str:
+    """サーバー内のロール一覧を取得します。"""
+    await ensure_bot_ready()
+    guild = client.get_guild(guild_id)
+    if not guild:
+        return "指定されたサーバーが見つかりません。"
+
+    roles_info = [f"- {role.name} (ID: {role.id})" for role in guild.roles]
+    return "\n".join(roles_info)
+
+# ==========================================
+# 3. メッセージ管理ツール
+# ==========================================
+
+@mcp.tool()
+async def send_message(guild_id: int, channel_id: int, content: str) -> str:
+    """指定したチャンネルにメッセージを送信します。"""
+    await ensure_bot_ready()
+    guild = client.get_guild(guild_id)
+    if not guild:
+        return "指定されたサーバーが見つかりません。"
+
+    channel = guild.get_channel(channel_id)
+    if not channel or not isinstance(channel, discord.TextChannel):
+        return "指定されたテキストチャンネルが見つかりません。"
+
+    msg = await channel.send(content)
+    return f"チャンネル『{channel.name}』にメッセージを送信しました。(Message ID: {msg.id})"
+
+# ==========================================
+# 4. 起動処理
+# ==========================================
 
 if __name__ == "__main__":
     import uvicorn
