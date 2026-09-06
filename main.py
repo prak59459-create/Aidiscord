@@ -835,6 +835,7 @@ async def create_scheduled_event(
             start_time=start_time,
             channel=channel,
             entity_type=discord.EntityType.voice,
+            privacy_level=discord.PrivacyLevel.guild_only,
         )
     else:
         event = await guild.create_scheduled_event(
@@ -844,6 +845,7 @@ async def create_scheduled_event(
             end_time=start_time,
             entity_type=discord.EntityType.external,
             location="オンライン",
+            privacy_level=discord.PrivacyLevel.guild_only,
         )
     return f"イベント『{event.name}』(ID: {event.id}) を作成しました。"
 
